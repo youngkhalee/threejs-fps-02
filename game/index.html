@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ember Vault — a three.js tactical FPS</title>
+<style>
+  :root{
+    --canvas:#171310; --surface:#241c16; --panel:#2e241b; --hairline:#4a3a2a;
+    --ink:#f3e9d8; --muted:#b8a68c; --ember:#ff8c2e; --ember2:#ffc46b;
+    --ward:#57c7ff; --breach:#ff5d47; --good:#7ee08a; --bad:#ff5d47;
+    --font-ui:system-ui,-apple-system,'Segoe UI',sans-serif;
+    --font-num:ui-monospace,'SF Mono',Menlo,monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;overflow:hidden;background:var(--canvas);color:var(--ink);font-family:var(--font-ui)}
+  #game,#game canvas{position:fixed;inset:0;display:block}
+  #hud{position:fixed;inset:0;pointer-events:none}
+  #crosshair{position:fixed;left:50%;top:50%;width:24px;height:24px;transform:translate(-50%,-50%)}
+  #crosshair i{position:absolute;background:var(--ink);opacity:.9}
+  #crosshair i:nth-child(1){left:11px;top:0;width:2px;height:7px}
+  #crosshair i:nth-child(2){left:11px;bottom:0;width:2px;height:7px}
+  #crosshair i:nth-child(3){top:11px;left:0;height:2px;width:7px}
+  #crosshair i:nth-child(4){top:11px;right:0;height:2px;width:7px}
+  #hitmarker{position:fixed;left:50%;top:50%;width:28px;height:28px;transform:translate(-50%,-50%) rotate(45deg);opacity:0}
+  #hitmarker.on{opacity:1}
+  #hitmarker i{position:absolute;background:var(--ember)}
+  #hitmarker i:nth-child(1){left:13px;top:0;width:2px;height:8px}
+  #hitmarker i:nth-child(2){left:13px;bottom:0;width:2px;height:8px}
+  #hitmarker i:nth-child(3){top:13px;left:0;height:2px;width:8px}
+  #hitmarker i:nth-child(4){top:13px;right:0;height:2px;width:8px}
+  #topbar{position:fixed;top:14px;left:50%;transform:translateX(-50%);display:flex;gap:14px;align-items:center;background:rgba(23,19,16,.72);border:1px solid var(--hairline);border-radius:8px;padding:7px 16px;font-family:var(--font-num)}
+  #topbar .w{color:var(--ward);font-weight:700} #topbar .b{color:var(--breach);font-weight:700}
+  #timer{font-size:22px;min-width:64px;text-align:center}
+  #timer.low{color:var(--bad)} #roundlabel{font-size:12px;color:var(--muted)}
+  #vitals{position:fixed;left:28px;bottom:22px;font-family:var(--font-num)}
+  #hpbar{width:210px;height:10px;background:#3a2f24;border:1px solid var(--hairline);border-radius:3px;overflow:hidden}
+  #hpfill{height:100%;background:var(--good);width:100%}
+  #hptext{font-size:30px;margin-top:4px} #armortext{font-size:14px;color:var(--ward)}
+  #combat{position:fixed;right:28px;bottom:22px;text-align:right;font-family:var(--font-num)}
+  #weaponname{font-size:13px;color:var(--muted);letter-spacing:.08em}
+  #ammo{font-size:46px;line-height:1} #ammo.low{color:var(--ember)} #reserve{font-size:15px;color:var(--muted)}
+  #money{font-size:20px;color:var(--ember2);margin-top:2px}
+  #feed{position:fixed;right:28px;top:70px;text-align:right;font-size:13px;color:var(--muted);display:grid;gap:3px}
+  #feed b{color:var(--ink);font-weight:600}
+  #banner{position:fixed;top:26%;left:50%;transform:translateX(-50%);text-align:center;opacity:0;transition:opacity .25s}
+  #banner.on{opacity:1} #banner h2{margin:0;font-size:44px;letter-spacing:.02em;text-shadow:0 2px 18px #000}
+  #banner p{margin:4px 0 0;color:var(--muted);font-size:16px}
+  #objective{position:fixed;bottom:110px;left:50%;transform:translateX(-50%);font-family:var(--font-num);font-size:14px;color:var(--ember2);background:rgba(23,19,16,.7);padding:5px 12px;border-radius:6px;border:1px solid var(--hairline)}
+  #objective[hidden]{display:none}
+  #plantbar{width:260px;height:8px;background:#3a2f24;border-radius:4px;margin:6px auto 0;overflow:hidden}
+  #plantfill{height:100%;background:var(--ember);width:0%}
+  .overlay{position:fixed;inset:0;display:grid;place-items:center;padding:22px;background:rgba(15,12,9,.78);pointer-events:auto}
+  .overlay[hidden]{display:none}
+  .panel{width:min(680px,100%);max-height:92vh;overflow:auto;padding:28px 32px;background:var(--surface);border:1px solid var(--hairline);border-radius:10px}
+  .panel h1{margin:0 0 6px;font-size:38px;letter-spacing:-.01em}
+  .panel h1 span{color:var(--ember)}
+  .panel p{margin:0 0 16px;color:var(--muted);line-height:1.5;max-width:58ch}
+  .btn{font:inherit;font-weight:600;padding:11px 20px;border:1px solid var(--ember);border-radius:8px;background:var(--ember);color:#1c130a;cursor:pointer}
+  .btn:hover{background:var(--ember2)} .btn.ghost{background:transparent;color:var(--ink);border-color:var(--hairline)}
+  .keys{list-style:none;margin:18px 0 0;padding:0;display:grid;grid-template-columns:1fr 1fr;gap:7px;font-size:13px;color:var(--muted)}
+  kbd{min-width:22px;display:inline-block;padding:1px 6px;border:1px solid var(--hairline);border-radius:4px;font-family:var(--font-num);font-size:11px;color:var(--ink);text-align:center;background:var(--panel)}
+  #buymoney{font-family:var(--font-num);color:var(--ember2);font-size:18px}
+  .buygrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:10px;margin:14px 0}
+  .buyitem{border:1px solid var(--hairline);border-radius:8px;padding:12px;background:var(--panel);cursor:pointer;text-align:left;color:var(--ink);font:inherit}
+  .buyitem:hover{border-color:var(--ember)} .buyitem.owned{border-color:var(--good);opacity:.75}
+  .buyitem.cant{opacity:.45;cursor:default}
+  .buyitem .nm{font-weight:700;font-size:15px} .buyitem .ds{font-size:12px;color:var(--muted);margin:3px 0}
+  .buyitem .pr{font-family:var(--font-num);color:var(--ember2)}
+  #damaged{position:fixed;inset:0;pointer-events:none;background:radial-gradient(ellipse at center,transparent 55%,rgba(200,30,10,.45));opacity:0}
+  #flashfx{position:fixed;inset:0;pointer-events:none;background:#fff8ec;opacity:0}
+</style>
+</head>
+<body>
+<div id="game"></div>
+<div id="damaged"></div><div id="flashfx"></div>
+<div id="hud" aria-hidden="true">
+  <div id="crosshair"><i></i><i></i><i></i><i></i></div>
+  <div id="hitmarker"><i></i><i></i><i></i><i></i></div>
+  <div id="topbar"><span class="w" id="score-w">0</span><span id="roundlabel">ROUND 1</span><span id="timer">1:40</span><span id="roundlabel2"></span><span class="b" id="score-b">0</span></div>
+  <div id="vitals"><div id="hpbar"><div id="hpfill"></div></div><div><span id="hptext">100</span> <span id="armortext">🛡 0</span></div></div>
+  <div id="combat"><div id="weaponname">KESTREL-9 SIDEARM</div><div><span id="ammo">12</span> <span id="reserve">/ ∞</span></div><div id="money">$800</div></div>
+  <div id="feed"></div>
+  <div id="banner"><h2 id="banner-title"></h2><p id="banner-sub"></p></div>
+  <div id="objective" hidden><span id="objective-text"></span><div id="plantbar"><div id="plantfill"></div></div></div>
+</div>
+
+<div id="menu" class="overlay">
+  <section class="panel" role="dialog" aria-modal="true">
+    <h1>EMBER <span>VAULT</span></h1>
+    <p>The Breachers want the vault core. Your Warden squad holds the foundry. Plant the <b>Core Charge</b> on the vault plinth — or stop theirs. First to 7 rounds takes the vault. Accuracy beats speed: stop, crouch, and make the first shot count.</p>
+    <button id="play" class="btn" type="button">Deploy — click to play</button>
+    <button id="play-attack" class="btn ghost" type="button">Play as Breachers (plant side)</button>
+    <ul class="keys">
+      <li><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> Move · <kbd>Shift</kbd> Walk</li>
+      <li><kbd>Mouse</kbd> Look · <kbd>Click</kbd> Fire</li>
+      <li><kbd>R</kbd> Reload · <kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> Weapons</li>
+      <li><kbd>Ctrl</kbd>/<kbd>C</kbd> Crouch · <kbd>Space</kbd> Jump</li>
+      <li><kbd>E</kbd> Plant / Defuse (hold at plinth)</li>
+      <li><kbd>G</kbd> Flash pellet · <kbd>B</kbd> Buy menu</li>
+    </ul>
+  </section>
+</div>
+
+<div id="buy" class="overlay" hidden>
+  <section class="panel" role="dialog" aria-modal="true">
+    <h1 style="font-size:26px">Armoury — <span id="buymoney">$800</span></h1>
+    <p id="buytimer">Buy phase ends soon. Click an item, then press B or the button to fight.</p>
+    <div class="buygrid" id="buygrid"></div>
+    <button id="buy-done" class="btn" type="button">Done — to the fight</button>
+  </section>
+</div>
+
+<div id="matchend" class="overlay" hidden>
+  <section class="panel" role="dialog" aria-modal="true">
+    <h1 id="end-title">Victory</h1>
+    <p id="end-copy"></p>
+    <button id="again" class="btn" type="button">Play again</button>
+  </section>
+</div>
+
+<script type="importmap">
+{ "imports": { "three": "./vendor/three/three.module.min.js" } }
+</script>
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>
